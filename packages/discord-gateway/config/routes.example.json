@@ -1,0 +1,20 @@
+{
+  "routes": [
+    {
+      "channel_id": "REPLACE_WITH_CHANNEL_ID",
+      "name": "bot-lab",
+      "handler": "echo"
+    },
+    {
+      "channel_id": "REPLACE_WITH_ALERTS_CHANNEL_ID",
+      "name": "alerts",
+      "handler": "webhook",
+      "webhook_url": "http://127.0.0.1:8788/discord-events"
+    },
+    {
+      "channel_id": "REPLACE_WITH_RECEIPTS_CHANNEL_ID",
+      "name": "receipts-only",
+      "handler": "receipt"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "name": "discord-gateway",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Generic local Discord websocket gateway with channel routes and receipts.",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "register:commands": "tsx src/register-commands.ts",
+    "example:webhook": "tsx examples/webhook-receiver.ts"
+  },
+  "dependencies": {
+    "discord.js": "^14.19.3",
+    "dotenv": "^16.4.7",
+    "fastify": "^5.3.2",
+    "pino": "^9.6.0",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.18",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.3"
+  }
+}

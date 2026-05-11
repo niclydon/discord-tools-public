@@ -1,0 +1,22 @@
+{
+  "name": "discord-tools-public",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Generic Discord MCP server and Discord gateway examples.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "packages/discord-mcp",
+    "packages/discord-gateway"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "check": "npm run check --workspaces",
+    "test": "npm run test --workspaces",
+    "dev:mcp": "npm run dev -w discord-mcp",
+    "dev:gateway": "npm run dev -w discord-gateway"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
