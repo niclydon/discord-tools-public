@@ -39,6 +39,31 @@ npm run dev:mcp
 npm run dev:gateway
 ```
 
+## Discord Bot Permissions
+
+Start with the smallest permission set for the package you are testing.
+
+For `discord-mcp`, grant only the permissions required by the tools you plan to use:
+
+- View Channels
+- Send Messages
+- Read Message History
+- Add Reactions
+- Manage Channels, Manage Threads, Manage Messages, Manage Roles, Manage Webhooks, or Kick Members only when testing the matching administrative tool
+
+For `discord-gateway`, grant:
+
+- View Channels
+- Send Messages
+- Send Messages in Threads
+- Create Public Threads
+- Create Private Threads
+- Read Message History
+- Add Reactions
+- Use Slash Commands
+
+Enable Message Content intent only when gateway handlers need to read message text.
+
 ## What You Get
 
 The MCP server provides tool calls for common Discord REST administration and messaging tasks: discovery, channels, messages, reactions, threads, webhooks, members, and roles.
@@ -51,6 +76,16 @@ The gateway provides a local event loop for Discord delivery surfaces:
 - forward events to a generic webhook backend
 - keep a local JSONL event log
 - expose `/health`
+
+## Safe Live Smoke
+
+Use a throwaway Discord server or private test channel, a dedicated test bot token, and non-sensitive test messages. Do not commit `.env`, `config/routes.json`, event logs, or webhook URLs.
+
+See [docs/live-smoke.md](docs/live-smoke.md) for a safe MCP and gateway smoke-test workflow.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting guidance and credential-rotation steps.
 
 ## Public-Safety Boundary
 
