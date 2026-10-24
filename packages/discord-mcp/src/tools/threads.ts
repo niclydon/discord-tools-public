@@ -5,6 +5,36 @@ import { explainDiscordError } from "../discord/errors.ts";
 import { channelArg, messageIdArg, reasonArg } from "./shared.ts";
 
 const threadIdArg = z.string().regex(/^\d+$/).describe("Thread snowflake ID.");
+const messageComponentsArg = z
+  .array(z.object({}).passthrough())
+  .max(5)
+  .optional()
+  .describe("Optional Discord message components for the forum starter message.");
+const filesArg = z
+  .array(
+    z.object({
+      filename: z.string().min(1).max(256),
+      data_base64: z.string().min(1),
+      content_type: z.string().min(1).max(128).optional()
+    })
+  )
+  .max(10)
+  .optional()
+  .describe(
+    "Optional image/file attachments for the starter message. Each is base64-encoded bytes; they render inline (e.g. generated image cards) instead of as links."
+  );
+const COLORS = {
+  low: 9807270,
+  default: 3447003,
+  high: 15105570,
+  critical: 15158332
+} as const;
+
+interface ThreadListResponse {
+  threads?: Array<{ id?: string; parent_id?: string } & Record<string, unknown>>;
+  members?: Array<{ id?: string } & Record<string, unknown>>;
+  [key: string]: unknown;
+}
 
 function asText(v: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(v, null, 2) }] };
@@ -26,6 +56,122 @@ async function run<T>(fn: () => Promise<T>) {
 }
 
 export function registerThreads(server: McpServer, ctx: ServerContext): void {
+  server.registerTool(
+    "discord_create_forum_post",
+    {
+      title: "Create a forum post",
+      description:
+        "Creates a new post/thread in a Discord forum channel. Supports plain content or a colored embed.",
+      inputSchema: {
+        forum: channelArg,
+        name: z.string().min(1).max(100),
+        content: z.string().min(1).max(2000).optional(),
+        title: z.string().min(1).max(256).optional(),
+        body: z.string().min(1).max(4000).optional(),
+        priority: z.enum(["low", "default", "high", "critical"]).optional(),
+        auto_archive_minutes: z
+          .number()
+          .int()
+          .refine((v) => [60, 1440, 4320, 10080].includes(v), {
+            message: "must be 60, 1440, 4320, or 10080"
+          })
+          .optional(),
+        allowed_mentions: z
+          .object({
+            parse: z.array(z.enum(["roles", "users", "everyone"])).optional(),
+            users: z.array(z.string()).optional(),
+            roles: z.array(z.string()).optional()
+          })
+          .optional(),
+        components: messageComponentsArg,
+        files: filesArg,
+        reason: reasonArg
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }
+    },
+    async ({
+      forum,
+      name,
+      content,
+      title,
+      body,
+      priority,
+      auto_archive_minutes,
+      allowed_mentions,
+      components,
+      files,
+      reason
+    }: {
+      forum: string;
+      name: string;
+      content?: string;
+      title?: string;
+      body?: string;
+      priority?: "low" | "default" | "high" | "critical";
+      auto_archive_minutes?: number;
+      allowed_mentions?: Record<string, unknown>;
+      components?: Array<Record<string, unknown>>;
+      files?: Array<{ filename: string; data_base64: string; content_type?: string }>;
+      reason?: string;
+    }) =>
+      run(async () => {
+        if (!content && !body && !(files && files.length > 0)) {
+          throw new Error("discord_create_forum_post requires content, body, or files");
+        }
+
+        const id = await ctx.resolver.channelId(forum);
+        const message: Record<string, unknown> = {};
+        if (content) message.content = content;
+        if (body) {
+          message.embeds = [
+            {
+              title: title ?? name,
+              description: body,
+              color: COLORS[priority ?? "default"]
+            }
+          ];
+        }
+        if (allowed_mentions) message.allowed_mentions = allowed_mentions;
+        if (components) message.components = components;
+
+        const requestFiles = files?.map((f) => ({
+          filename: f.filename,
+          data: Uint8Array.from(Buffer.from(f.data_base64, "base64")),
+          contentType: f.content_type
+        }));
+        if (requestFiles && requestFiles.length > 0) {
+          // Reference array lets Discord attach the uploaded parts to the message.
+          message.attachments = requestFiles.map((f, i) => ({
+            id: i,
+            filename: f.filename
+          }));
+        }
+
+        const requestBody: Record<string, unknown> = { name, message };
+        if (auto_archive_minutes !== undefined) {
+          requestBody.auto_archive_duration = auto_archive_minutes;
+        }
+
+        const out = await ctx.client.request<{
+          id: string;
+          name?: string;
+          parent_id?: string;
+          message?: { id?: string };
+        }>("POST", `/channels/${id}/threads`, {
+          body: requestBody,
+          files: requestFiles,
+          reason
+        });
+        return {
+          forum_channel_id: id,
+          thread_id: out.id,
+          thread_name: out.name ?? name,
+          message_id: out.message?.id ?? null,
+          raw: out
+        };
+      })
+  );
+
   server.registerTool(
     "discord_create_thread",
     {
@@ -108,10 +254,18 @@ export function registerThreads(server: McpServer, ctx: ServerContext): void {
             `/channels/${id}/threads/archived/public`
           );
         }
-        return ctx.client.request(
+        const active = await ctx.client.request<ThreadListResponse>(
           "GET",
           `/guilds/${ctx.guildId}/threads/active`
         );
+        const threads = (active.threads ?? []).filter(
+          (thread) => thread.parent_id === id
+        );
+        const threadIds = new Set(threads.map((thread) => thread.id).filter(Boolean));
+        const members = (active.members ?? []).filter(
+          (member) => member.id && threadIds.has(member.id)
+        );
+        return { ...active, threads, members };
       })
   );
 

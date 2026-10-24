@@ -66,9 +66,9 @@ Enable Message Content intent only when gateway handlers need to read message te
 
 ## What You Get
 
-The MCP server provides tool calls for common Discord REST administration and messaging tasks: discovery, channels, messages, reactions, threads, webhooks, members, and roles.
+The MCP server provides tool calls for common Discord REST administration and messaging tasks: discovery, channels, messages, reactions, threads (including forum posts with attachments), webhooks, members, and roles.
 
-The gateway provides a local event loop for Discord delivery surfaces:
+The gateway is a generic pattern example: a local event loop for Discord delivery surfaces:
 
 - route messages and reactions by channel
 - inherit a parent channel route inside threads

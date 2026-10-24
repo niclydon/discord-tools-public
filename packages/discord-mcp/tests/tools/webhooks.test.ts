@@ -51,4 +51,34 @@ describe("tools/webhooks", () => {
     expect(sent.embeds[0].color).toBe(15105570);
     expect(sent.username).toBe("HF Scout");
   });
+
+  it("post_via_webhook includes footer and timestamp when provided", async () => {
+    mock.enqueue({ status: 204 });
+    const s = makeServer();
+    await getTool(s, "discord_post_via_webhook").handler({
+      webhook_url: "https://discord.com/api/webhooks/W1/TOKEN",
+      username: "Example",
+      title: "briefing",
+      body: "daily summary",
+      footer: "example-worker",
+      timestamp: "2026-05-12T06:00:00.000Z"
+    });
+    const sent = JSON.parse(mock.recorded[0].body!);
+    expect(sent.embeds[0].footer).toEqual({ text: "example-worker" });
+    expect(sent.embeds[0].timestamp).toBe("2026-05-12T06:00:00.000Z");
+  });
+
+  it("post_via_webhook omits footer and timestamp when not provided", async () => {
+    mock.enqueue({ status: 204 });
+    const s = makeServer();
+    await getTool(s, "discord_post_via_webhook").handler({
+      webhook_url: "https://discord.com/api/webhooks/W1/TOKEN",
+      username: "Example",
+      title: "ping",
+      body: "pong"
+    });
+    const sent = JSON.parse(mock.recorded[0].body!);
+    expect(sent.embeds[0].footer).toBeUndefined();
+    expect(sent.embeds[0].timestamp).toBeUndefined();
+  });
 });

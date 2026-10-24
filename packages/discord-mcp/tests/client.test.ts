@@ -48,6 +48,36 @@ describe("DiscordClient — auth headers", () => {
       encodeURIComponent("operator requested cleanup")
     );
   });
+
+  it("sends multipart/form-data with payload_json + files[n] when files provided", async () => {
+    mock.enqueue({ status: 200, body: { id: "T1", message: { id: "M1" } } });
+    const c = new DiscordClient({ token: TOKEN, version: "0.1.0" });
+    await c.request("POST", "/channels/1/threads", {
+      body: { name: "x", message: { content: "hi" } },
+      files: [
+        { filename: "a.jpg", data: new Uint8Array([1, 2, 3]), contentType: "image/jpeg" },
+        { filename: "b.jpg", data: new Uint8Array([4, 5]) }
+      ]
+    });
+    const r = mock.recorded[0];
+    // fetch must NOT carry an explicit JSON content-type; the boundary header is set by fetch
+    expect(r.headers["content-type"]).toBeUndefined();
+    const form = r.body as unknown as FormData;
+    expect(form).toBeInstanceOf(FormData);
+    expect(JSON.parse(form.get("payload_json") as string)).toMatchObject({
+      name: "x",
+      message: { content: "hi" }
+    });
+    const f0 = form.get("files[0]") as File;
+    const f1 = form.get("files[1]") as File;
+    expect(f0).toBeInstanceOf(Blob);
+    expect((f0 as File).name).toBe("a.jpg");
+    expect(f0.type).toBe("image/jpeg");
+    expect(await f0.arrayBuffer().then((b) => new Uint8Array(b))).toEqual(
+      new Uint8Array([1, 2, 3])
+    );
+    expect((f1 as File).name).toBe("b.jpg");
+  });
 });
 
 describe("DiscordClient — rate limit", () => {

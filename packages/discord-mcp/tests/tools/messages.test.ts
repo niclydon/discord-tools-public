@@ -94,6 +94,184 @@ describe("tools/messages", () => {
     expect(out.content[0].text).toMatch(/M1[\s\S]*M2/);
   });
 
+  it("post_embed uses explicit color when provided (overrides priority)", async () => {
+    mock.enqueue({
+      status: 200,
+      body: [{ id: "C1", name: "alerts", type: 0 }]
+    });
+    mock.enqueue({ status: 200, body: { id: "M5" } });
+    const s = makeServer();
+    await getTool(s, "discord_post_embed").handler({
+      channel: "alerts",
+      title: "tier",
+      body: "branded",
+      priority: "critical",
+      color: 0x5865f2
+    });
+    const sent = JSON.parse(mock.recorded[1].body!);
+    expect(sent.embeds[0].color).toBe(0x5865f2);
+  });
+
+  it("post_embed falls back to priority color when color is absent", async () => {
+    mock.enqueue({
+      status: 200,
+      body: [{ id: "C1", name: "alerts", type: 0 }]
+    });
+    mock.enqueue({ status: 200, body: { id: "M6" } });
+    const s = makeServer();
+    await getTool(s, "discord_post_embed").handler({
+      channel: "alerts",
+      title: "ok",
+      body: "high prio",
+      priority: "high"
+    });
+    const sent = JSON.parse(mock.recorded[1].body!);
+    expect(sent.embeds[0].color).toBe(15105570);
+  });
+
+  it("post_embed defaults to the default color when neither color nor priority given", async () => {
+    mock.enqueue({
+      status: 200,
+      body: [{ id: "C1", name: "alerts", type: 0 }]
+    });
+    mock.enqueue({ status: 200, body: { id: "M7" } });
+    const s = makeServer();
+    await getTool(s, "discord_post_embed").handler({
+      channel: "alerts",
+      title: "plain",
+      body: "no color, no priority"
+    });
+    const sent = JSON.parse(mock.recorded[1].body!);
+    expect(sent.embeds[0].color).toBe(3447003);
+  });
+
+  it("post_embed sets message_reference when reply_to is provided", async () => {
+    mock.enqueue({
+      status: 200,
+      body: [{ id: "C1", name: "alerts", type: 0 }]
+    });
+    mock.enqueue({ status: 200, body: { id: "M8" } });
+    const s = makeServer();
+    await getTool(s, "discord_post_embed").handler({
+      channel: "alerts",
+      title: "card",
+      body: "under head msg",
+      reply_to: "9999"
+    });
+    const sent = JSON.parse(mock.recorded[1].body!);
+    expect(sent.message_reference).toEqual({ message_id: "9999" });
+  });
+
+  it("post_embed omits message_reference when reply_to is absent", async () => {
+    mock.enqueue({
+      status: 200,
+      body: [{ id: "C1", name: "alerts", type: 0 }]
+    });
+    mock.enqueue({ status: 200, body: { id: "M9" } });
+    const s = makeServer();
+    await getTool(s, "discord_post_embed").handler({
+      channel: "alerts",
+      title: "card",
+      body: "standalone"
+    });
+    const sent = JSON.parse(mock.recorded[1].body!);
+    expect(sent.message_reference).toBeUndefined();
+  });
+
+  it("post_embed forwards components (button action rows) when provided", async () => {
+    mock.enqueue({
+      status: 200,
+      body: [{ id: "C1", name: "alerts", type: 0 }]
+    });
+    mock.enqueue({ status: 200, body: { id: "M11" } });
+    const s = makeServer();
+    const components = [
+      {
+        type: 1,
+        components: [
+          { type: 2, style: 3, label: "👍 Useful", custom_id: "insight_feedback:v1:abc:up" },
+          { type: 2, style: 4, label: "👎 Not useful", custom_id: "insight_feedback:v1:abc:down" }
+        ]
+      }
+    ];
+    await getTool(s, "discord_post_embed").handler({
+      channel: "alerts",
+      title: "insight",
+      body: "rate me",
+      components
+    });
+    const sent = JSON.parse(mock.recorded[1].body!);
+    expect(sent.components).toEqual(components);
+  });
+
+  it("post_embed omits components when not provided", async () => {
+    mock.enqueue({
+      status: 200,
+      body: [{ id: "C1", name: "alerts", type: 0 }]
+    });
+    mock.enqueue({ status: 200, body: { id: "M12" } });
+    const s = makeServer();
+    await getTool(s, "discord_post_embed").handler({
+      channel: "alerts",
+      title: "insight",
+      body: "no buttons"
+    });
+    const sent = JSON.parse(mock.recorded[1].body!);
+    expect(sent.components).toBeUndefined();
+  });
+
+  it("post_embed posts into thread_id without resolving the channel name", async () => {
+    // Only one queued response: the POST. If the channel resolver had fired it
+    // would consume this response and the POST would have no mock left → throw.
+    mock.enqueue({ status: 200, body: { id: "M10" } });
+    const s = makeServer();
+    await getTool(s, "discord_post_embed").handler({
+      channel: "alerts",
+      title: "in-thread",
+      body: "forum card",
+      thread_id: "7777"
+    });
+    expect(mock.recorded.length).toBe(1);
+    expect(mock.recorded[0].method).toBe("POST");
+    expect(mock.recorded[0].url).toContain("/channels/7777/messages");
+  });
+
+  it("post_embed includes footer and timestamp when provided", async () => {
+    mock.enqueue({
+      status: 200,
+      body: [{ id: "C1", name: "alerts", type: 0 }]
+    });
+    mock.enqueue({ status: 200, body: { id: "M3" } });
+    const s = makeServer();
+    await getTool(s, "discord_post_embed").handler({
+      channel: "alerts",
+      title: "deploy",
+      body: "v1.2 shipped",
+      footer: "example-worker",
+      timestamp: "2026-05-12T00:00:00.000Z"
+    });
+    const sent = JSON.parse(mock.recorded[1].body!);
+    expect(sent.embeds[0].footer).toEqual({ text: "example-worker" });
+    expect(sent.embeds[0].timestamp).toBe("2026-05-12T00:00:00.000Z");
+  });
+
+  it("post_embed omits footer and timestamp when not provided", async () => {
+    mock.enqueue({
+      status: 200,
+      body: [{ id: "C1", name: "alerts", type: 0 }]
+    });
+    mock.enqueue({ status: 200, body: { id: "M4" } });
+    const s = makeServer();
+    await getTool(s, "discord_post_embed").handler({
+      channel: "alerts",
+      title: "ping",
+      body: "pong"
+    });
+    const sent = JSON.parse(mock.recorded[1].body!);
+    expect(sent.embeds[0].footer).toBeUndefined();
+    expect(sent.embeds[0].timestamp).toBeUndefined();
+  });
+
   it("search_messages paginates and filters", async () => {
     mock.enqueue({
       status: 200,

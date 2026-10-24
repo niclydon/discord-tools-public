@@ -117,7 +117,17 @@ export function registerWebhooks(server: McpServer, ctx: ServerContext): void {
         username: z.string().min(1).max(80),
         title: z.string().min(1).max(256),
         body: z.string().min(1).max(4000),
-        priority: z.enum(["low", "default", "high", "critical"]).optional()
+        priority: z.enum(["low", "default", "high", "critical"]).optional(),
+        footer: z
+          .string()
+          .max(2048)
+          .optional()
+          .describe("Small grey footer text below the embed body."),
+        timestamp: z
+          .string()
+          .datetime()
+          .optional()
+          .describe("ISO 8601 timestamp, rendered in the viewer's local timezone.")
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }
     },
@@ -126,20 +136,24 @@ export function registerWebhooks(server: McpServer, ctx: ServerContext): void {
       username,
       title,
       body,
-      priority
+      priority,
+      footer,
+      timestamp
     }: {
       webhook_url: string;
       username: string;
       title: string;
       body: string;
       priority?: Priority;
+      footer?: string;
+      timestamp?: string;
     }) =>
       run(async () => {
         const color = COLORS[priority ?? "default"];
-        const payload = {
-          username,
-          embeds: [{ title, description: body, color }]
-        };
+        const embed: Record<string, unknown> = { title, description: body, color };
+        if (footer) embed.footer = { text: footer };
+        if (timestamp) embed.timestamp = timestamp;
+        const payload: Record<string, unknown> = { username, embeds: [embed] };
         const resp = await fetch(webhook_url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

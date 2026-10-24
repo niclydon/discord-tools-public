@@ -13,6 +13,41 @@ const COLORS = {
 
 const CHUNK = 2000;
 
+// Optional button components for embed posts (e.g. 👍/👎 feedback
+// action rows on posted cards). Kept deliberately narrow — action rows of
+// link-less buttons only, so callers cannot inject arbitrary component types.
+const componentButtonSchema = z
+  .object({
+    type: z.literal(2),
+    style: z
+      .number()
+      .int()
+      .min(1)
+      .max(4)
+      .describe("Discord button style: 1=primary, 2=secondary, 3=success, 4=danger."),
+    label: z.string().max(80).optional(),
+    custom_id: z.string().min(1).max(100),
+    emoji: z
+      .object({ name: z.string().min(1), id: z.string().optional() })
+      .optional()
+  })
+  .strict();
+
+const actionRowSchema = z
+  .object({
+    type: z.literal(1),
+    components: z.array(componentButtonSchema).min(1).max(5)
+  })
+  .strict();
+
+const componentsArg = z
+  .array(actionRowSchema)
+  .max(5)
+  .optional()
+  .describe(
+    "Optional Discord message components (action rows of buttons). Each row: {type:1, components:[{type:2, style, label?, custom_id, emoji?}]}. Max 5 rows / 5 buttons per row."
+  );
+
 function asText(v: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(v, null, 2) }] };
 }
@@ -95,7 +130,7 @@ export function registerMessages(server: McpServer, ctx: ServerContext): void {
     {
       title: "Post a colored embed",
       description:
-        "Posts a Discord embed with a simple priority color map (low/default/high/critical).",
+        "Posts a Discord embed. Color defaults to the priority color map (low/default/high/critical → grey/blue/orange/red); pass an explicit `color` (24-bit int 0..0xFFFFFF) to override with a brand/tier color. Optional `reply_to` threads the embed under a head message; optional `thread_id` posts it into an existing thread.",
       inputSchema: {
         channel: channelArg,
         title: z.string().min(1).max(256),
@@ -103,12 +138,42 @@ export function registerMessages(server: McpServer, ctx: ServerContext): void {
         priority: z
           .enum(["low", "default", "high", "critical"])
           .optional()
-          .describe("Default: default."),
+          .describe("Default: default. Ignored when `color` is supplied."),
+        color: z
+          .number()
+          .int()
+          .min(0)
+          .max(0xffffff)
+          .optional()
+          .describe(
+            "Explicit embed color as a 24-bit integer (0..16777215 / 0x000000..0xFFFFFF). Overrides the priority→color map. When absent, the priority color is used."
+          ),
         username: z
           .string()
           .max(80)
           .optional()
-          .describe("Override author username (per-source identity).")
+          .describe("Override author username (per-source identity)."),
+        footer: z
+          .string()
+          .max(2048)
+          .optional()
+          .describe("Small grey footer text below the embed body."),
+        timestamp: z
+          .string()
+          .datetime()
+          .optional()
+          .describe("ISO 8601 timestamp, rendered in the viewer's local timezone."),
+        reply_to: messageIdArg
+          .optional()
+          .describe(
+            "Optional message snowflake to reply to. Sets message_reference so the embed threads under a head message."
+          ),
+        thread_id: messageIdArg
+          .optional()
+          .describe(
+            "Optional thread snowflake. When set, the embed is posted into that thread instead of the parent channel."
+          ),
+        components: componentsArg
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }
     },
@@ -117,21 +182,40 @@ export function registerMessages(server: McpServer, ctx: ServerContext): void {
       title,
       body,
       priority,
-      username
+      color,
+      username,
+      footer,
+      timestamp,
+      reply_to,
+      thread_id,
+      components
     }: {
       channel: string;
       title: string;
       body: string;
       priority?: "low" | "default" | "high" | "critical";
+      color?: number;
       username?: string;
+      footer?: string;
+      timestamp?: string;
+      reply_to?: string;
+      thread_id?: string;
+      components?: Array<Record<string, unknown>>;
     }) =>
       run(async () => {
-        const id = await ctx.resolver.channelId(channel);
-        const color = COLORS[priority ?? "default"];
-        const payload: Record<string, unknown> = {
-          embeds: [{ title, description: body, color }]
+        const id = thread_id ?? (await ctx.resolver.channelId(channel));
+        const embedColor = color ?? COLORS[priority ?? "default"];
+        const embed: Record<string, unknown> = {
+          title,
+          description: body,
+          color: embedColor
         };
+        if (footer) embed.footer = { text: footer };
+        if (timestamp) embed.timestamp = timestamp;
+        const payload: Record<string, unknown> = { embeds: [embed] };
         if (username) payload.username = username;
+        if (reply_to) payload.message_reference = { message_id: reply_to };
+        if (components) payload.components = components;
         return ctx.client.request("POST", `/channels/${id}/messages`, {
           body: payload
         });

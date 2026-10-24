@@ -7,11 +7,23 @@ export interface DiscordClientOptions {
   maxRetry?: number;
 }
 
+export interface RequestFile {
+  filename: string;
+  data: Uint8Array;
+  contentType?: string;
+}
+
 export interface RequestOptions {
   body?: unknown;
   reason?: string;
   query?: Record<string, string | number | undefined>;
   bucketHint?: string;
+  /**
+   * When set, the request is sent as multipart/form-data: `body` is serialized
+   * into the `payload_json` part and each file is appended as `files[n]`. Used
+   * to upload image attachments (e.g. generated image cards).
+   */
+  files?: RequestFile[];
 }
 
 export interface DiscordHttpError extends Error {
@@ -104,8 +116,21 @@ export class DiscordClient {
       Authorization: `Bot ${this.token}`,
       "User-Agent": this.ua
     };
-    let body: string | undefined;
-    if (opts.body !== undefined) {
+    // Rebuilt fresh on every attempt so retries get an unconsumed body.
+    let body: string | FormData | undefined;
+    if (opts.files && opts.files.length > 0) {
+      const form = new FormData();
+      form.append("payload_json", JSON.stringify(opts.body ?? {}));
+      opts.files.forEach((f, i) => {
+        form.append(
+          `files[${i}]`,
+          new Blob([f.data], { type: f.contentType ?? "application/octet-stream" }),
+          f.filename
+        );
+      });
+      // Do NOT set Content-Type — fetch derives the multipart boundary itself.
+      body = form;
+    } else if (opts.body !== undefined) {
       headers["Content-Type"] = "application/json";
       body = JSON.stringify(opts.body);
     }
