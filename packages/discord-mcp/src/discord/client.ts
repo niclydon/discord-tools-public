@@ -124,7 +124,7 @@ export class DiscordClient {
       opts.files.forEach((f, i) => {
         form.append(
           `files[${i}]`,
-          new Blob([f.data], { type: f.contentType ?? "application/octet-stream" }),
+          new Blob([new Uint8Array(f.data)], { type: f.contentType ?? "application/octet-stream" }),
           f.filename
         );
       });
